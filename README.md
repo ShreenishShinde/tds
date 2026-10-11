@@ -1,18 +1,15 @@
-# eShopCo latency endpoint (Vercel)
+# Fixed Vercel FastAPI project
 
-## Deploy
-1. Extract this folder.
-2. Push its contents to a GitHub repository.
-3. Import that repository at https://vercel.com/new and deploy with the default settings.
-4. The POST endpoint is `https://YOUR-PROJECT.vercel.app/api`.
+This version uses the root `app.py` entrypoint supported by Vercel's FastAPI integration.
 
-## Test
+1. Replace the files in your GitHub repository with these files (or import this as a new repository).
+2. Redeploy on Vercel.
+3. Since this is a root FastAPI app with `@app.post("/")`, use the POST endpoint:
+   `https://YOUR-PROJECT.vercel.app/`
+
+Test:
 ```bash
-curl -X POST 'https://YOUR-PROJECT.vercel.app/api' \
+curl -X POST 'https://YOUR-PROJECT.vercel.app/' \
   -H 'Content-Type: application/json' \
   -d '{"regions":["apac","emea"],"threshold_ms":176}'
 ```
-
-The response contains one object per requested region with `avg_latency`,
-`p95_latency`, `avg_uptime`, and `breaches`. Percentiles use linear interpolation
-(the common NumPy default). CORS allows any origin for POST/OPTIONS.
