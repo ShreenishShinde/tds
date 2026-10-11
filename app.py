@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pathlib import Path
@@ -7,57 +6,65 @@ import math
 
 app = FastAPI()
 
+# Explicitly set CORS headers on every response, including OPTIONS.
 @app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
+async def cors_headers(request: Request, call_next):
     if request.method == "OPTIONS":
         response = JSONResponse(content={})
     else:
         response = await call_next(request)
-
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
-with (Path(__file__).resolve().parent / "data.json").open() as f:
-    DATA = json.load(f)
+DATA_PATH = Path(__file__).resolve().parent / "q-vercel-latency.json"
+with DATA_PATH.open("r", encoding="utf-8") as f:
+    TELEMETRY = json.load(f)
 
 def percentile95(values):
+    """Linear-interpolated 95th percentile."""
     values = sorted(values)
     if len(values) == 1:
         return values[0]
-    pos = 0.95 * (len(values) - 1)
-    lo, hi = math.floor(pos), math.ceil(pos)
-    return values[lo] + (values[hi] - values[lo]) * (pos - lo)
+    position = 0.95 * (len(values) - 1)
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return values[lower]
+    return values[lower] + (values[upper] - values[lower]) * (position - lower)
 
-async def calculate_metrics(request: Request):
+async def metrics(request: Request):
     body = await request.json()
+    regions = body.get("regions", [])
     threshold = float(body.get("threshold_ms", 180))
-    result = {}
+    if not isinstance(regions, list):
+        return JSONResponse(status_code=400, content={"error": "'regions' must be a list"})
 
-    for region in body.get("regions", []):
-        rows = [r for r in DATA if r["region"] == region]
-        if not rows:
+    result = {}
+    for region in regions:
+        records = [r for r in TELEMETRY if r.get("region") == region]
+        if not records:
             result[region] = {
                 "avg_latency": None,
                 "p95_latency": None,
                 "avg_uptime": None,
-                "breaches": 0
+                "breaches": 0,
             }
             continue
 
-        latency = [float(r["latency_ms"]) for r in rows]
-        uptime = [float(r["uptime_pct"]) for r in rows]
-
+        latencies = [float(r["latency_ms"]) for r in records]
+        uptimes = [float(r["uptime_pct"]) for r in records]
         result[region] = {
-            "avg_latency": sum(latency) / len(latency),
-            "p95_latency": percentile95(latency),
-            "avg_uptime": sum(uptime) / len(uptime),
-            "breaches": sum(x > threshold for x in latency)
+            "avg_latency": sum(latencies) / len(latencies),
+            "p95_latency": percentile95(latencies),
+            "avg_uptime": sum(uptimes) / len(uptimes),
+            "breaches": sum(value > threshold for value in latencies),
         }
-
     return result
 
-app.post("/")(calculate_metrics)
-app.post("/latency")(calculate_metrics)
-app.post("/api/latency")(calculate_metrics)
+# The assignment's catch-all Vercel route forwards requests to this function.
+# Expose the same POST handler at root and common path variants.
+app.post("/")(metrics)
+app.post("/api/latency")(metrics)
+app.post("/latency")(metrics)
