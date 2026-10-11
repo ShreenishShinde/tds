@@ -23,7 +23,7 @@ async def cors_middleware(request: Request, call_next):
 
 
 # Load the telemetry file from the repository root.
-DATA_PATH = Path(__file__).resolve().parent.parent / "data.json"
+DATA_PATH = Path(__file__).resolve().parent / "q-vercel-latency.json"
 
 with DATA_PATH.open("r", encoding="utf-8") as f:
     TELEMETRY = json.load(f)
