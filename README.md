@@ -1,15 +1,20 @@
-# Fixed Vercel FastAPI project
+# TDS Vercel latency endpoint
 
-This version uses the root `app.py` entrypoint supported by Vercel's FastAPI integration.
+This project follows the assignment's required structure:
+- `api/index.py`
+- `requirements.txt` containing `fastapi`
+- root `vercel.json` using `@vercel/python` and a catch-all route
+- bundled telemetry JSON
 
-1. Replace the files in your GitHub repository with these files (or import this as a new repository).
-2. Redeploy on Vercel.
-3. Since this is a root FastAPI app with `@app.post("/")`, use the POST endpoint:
-   `https://YOUR-PROJECT.vercel.app/`
+## Deploy
+Replace the files in the GitHub repository connected to Vercel with these files and push to `main`, or import this folder as a new repository. Wait for the production deployment to complete.
 
-Test:
+## Endpoint
+The assignment's catch-all route forwards incoming paths to `api/index.py`. Test the submitted URL:
+`https://YOUR-PROJECT.vercel.app/api/latency`
+
 ```bash
-curl -X POST 'https://YOUR-PROJECT.vercel.app/' \
+curl -i -X POST 'https://YOUR-PROJECT.vercel.app/api/latency' \
   -H 'Content-Type: application/json' \
   -d '{"regions":["apac","emea"],"threshold_ms":176}'
 ```

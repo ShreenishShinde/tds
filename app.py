@@ -1,70 +1,48 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import json
 import math
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
-# Explicitly set CORS headers on every response, including OPTIONS.
-@app.middleware("http")
-async def cors_headers(request: Request, call_next):
-    if request.method == "OPTIONS":
-        response = JSONResponse(content={})
-    else:
-        response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    return response
-
-DATA_PATH = Path(__file__).resolve().parent / "q-vercel-latency.json"
-with DATA_PATH.open("r", encoding="utf-8") as f:
-    TELEMETRY = json.load(f)
+with (Path(__file__).resolve().parent / "data.json").open(encoding="utf-8") as f:
+    DATA = json.load(f)
 
 def percentile95(values):
-    """Linear-interpolated 95th percentile."""
     values = sorted(values)
     if len(values) == 1:
         return values[0]
-    position = 0.95 * (len(values) - 1)
-    lower = math.floor(position)
-    upper = math.ceil(position)
-    if lower == upper:
-        return values[lower]
-    return values[lower] + (values[upper] - values[lower]) * (position - lower)
+    pos = 0.95 * (len(values) - 1)
+    lo, hi = math.floor(pos), math.ceil(pos)
+    return values[lo] if lo == hi else values[lo] + (values[hi] - values[lo]) * (pos - lo)
 
+@app.post("/")
 async def metrics(request: Request):
     body = await request.json()
     regions = body.get("regions", [])
     threshold = float(body.get("threshold_ms", 180))
     if not isinstance(regions, list):
-        return JSONResponse(status_code=400, content={"error": "'regions' must be a list"})
-
+        return {"error": "'regions' must be a list"}
     result = {}
     for region in regions:
-        records = [r for r in TELEMETRY if r.get("region") == region]
-        if not records:
-            result[region] = {
-                "avg_latency": None,
-                "p95_latency": None,
-                "avg_uptime": None,
-                "breaches": 0,
-            }
+        rows = [r for r in DATA if r.get("region") == region]
+        if not rows:
+            result[region] = {"avg_latency": None, "p95_latency": None, "avg_uptime": None, "breaches": 0}
             continue
-
-        latencies = [float(r["latency_ms"]) for r in records]
-        uptimes = [float(r["uptime_pct"]) for r in records]
+        latency = [float(r["latency_ms"]) for r in rows]
+        uptime = [float(r["uptime_pct"]) for r in rows]
         result[region] = {
-            "avg_latency": sum(latencies) / len(latencies),
-            "p95_latency": percentile95(latencies),
-            "avg_uptime": sum(uptimes) / len(uptimes),
-            "breaches": sum(value > threshold for value in latencies),
+            "avg_latency": sum(latency) / len(latency),
+            "p95_latency": percentile95(latency),
+            "avg_uptime": sum(uptime) / len(uptime),
+            "breaches": sum(x > threshold for x in latency),
         }
     return result
-
-# The assignment's catch-all Vercel route forwards requests to this function.
-# Expose the same POST handler at root and common path variants.
-app.post("/")(metrics)
-app.post("/api/latency")(metrics)
-app.post("/latency")(metrics)
